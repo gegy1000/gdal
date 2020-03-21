@@ -170,6 +170,35 @@ impl <'a> RasterBand<'a> {
         )
     }
 
+    pub fn read_block_as<T: Copy + GdalType>(
+        &self,
+        block_index: (usize, usize)
+    ) -> Result<Buffer<T>>
+    {
+        let size = self.block_size();
+        let pixels = (size.0 * size.1) as usize;
+        let mut data: Vec<T> = Vec::with_capacity(pixels);
+
+        //let no_data:
+        let rv = unsafe {
+            gdal_sys::GDALReadBlock(
+                self.c_rasterband,
+                block_index.0 as c_int,
+                block_index.1 as c_int,
+                data.as_mut_ptr() as GDALRasterBandH
+            )
+        };
+        if rv != CPLErr::CE_None {
+            Err(_last_cpl_err(rv))?;
+        }
+
+        unsafe {
+            data.set_len(pixels);
+        };
+
+        Ok(Buffer { size, data })
+    }
+
     #[cfg(feature = "ndarray")]
     /// Read a 'Array2<T>' from a 'Dataset' block. T implements 'GdalType'
     /// # Arguments
@@ -306,14 +335,13 @@ impl <'a> RasterBand<'a> {
 
     pub fn fill_nodata(
         &self,
-        mask: &RasterBand,
         max_search_distance: impl Into<Option<f64>>,
         smooth_iterations: usize
     ) -> Result<()> {
         let max_search_distance = max_search_distance.into().unwrap_or(0.0);
         let err = unsafe { gdal_sys::GDALFillNodata(
             self.c_rasterband,
-            mask.c_rasterband,
+            null_mut(),
             max_search_distance as libc::c_double,
             0,
             smooth_iterations as libc::c_int,
