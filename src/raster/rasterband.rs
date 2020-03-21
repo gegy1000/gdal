@@ -5,6 +5,7 @@ use gdal_major_object::MajorObject;
 use metadata::Metadata;
 use gdal_sys::{self, CPLErr, GDALDataType, GDALMajorObjectH, GDALRasterBandH, GDALRWFlag};
 use utils::_last_cpl_err;
+use std::ptr::null_mut;
 
 #[cfg(feature = "ndarray")]
 use ndarray::{Array2};
@@ -293,6 +294,44 @@ impl <'a> RasterBand<'a> {
             Err(_last_cpl_err(rv))?;
         }
         Ok((block_size_x as usize, block_size_y as usize))
+    }
+
+    pub fn fill(&self, real: f64, imaginary: f64) -> Result<()> {
+        let err = unsafe { gdal_sys::GDALFillRaster(self.c_rasterband, real, imaginary) };
+        if err != CPLErr::CE_None {
+            Err(_last_cpl_err(err))?;
+        }
+        Ok(())
+    }
+
+    pub fn fill_nodata(
+        &self,
+        mask: &RasterBand,
+        max_search_distance: impl Into<Option<f64>>,
+        smooth_iterations: usize
+    ) -> Result<()> {
+        let max_search_distance = max_search_distance.into().unwrap_or(0.0);
+        let err = unsafe { gdal_sys::GDALFillNodata(
+            self.c_rasterband,
+            mask.c_rasterband,
+            max_search_distance as libc::c_double,
+            0,
+            smooth_iterations as libc::c_int,
+            null_mut(),
+            None,
+            null_mut(),
+        ) };
+        if err != CPLErr::CE_None {
+            Err(_last_cpl_err(err))?;
+        }
+        Ok(())
+    }
+
+    pub fn mask(&self) -> RasterBand<'a> {
+        unsafe {
+            let mask = gdal_sys::GDALGetMaskBand(self.c_rasterband);
+            RasterBand::_with_c_ptr(mask, self.owning_dataset)
+        }
     }
 }
 
